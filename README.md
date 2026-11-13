@@ -1,4 +1,4 @@
-#AI Personal Assistant
+# AI Personal Assistant
 
 A fully-working AI Personal Assistant built with **Python + FastAPI + Starlette**, powered by **Claude (Anthropic) or GPT (OpenAI)** via real tool-calling agents — not just a simple chatbot.
 
