@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Personal Assistant</title>
+<style>
+/* ── reset & tokens ─────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--border:#2d3250;
+  --accent:#7c6af7;--accent2:#5eead4;--red:#f87171;--yellow:#fbbf24;--green:#34d399;
+  --text:#e2e8f0;--muted:#8892b0;--font:"Inter",system-ui,sans-serif;
+  --radius:12px;--rad-sm:8px;--shadow:0 4px 24px rgba(0,0,0,.4);
+}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+
+/* ── layout ────────────────────────────────────────── */
+#app{display:flex;height:100vh;overflow:hidden}
+#sidebar{width:220px;min-width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0}
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── sidebar ───────────────────────────────────────── */
+.logo{padding:0 20px 20px;font-size:1.3rem;font-weight:700;color:var(--accent);letter-spacing:-.5px}
+.logo span{color:var(--text)}
+nav a{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--muted);text-decoration:none;font-size:.9rem;border-radius:0;transition:.15s}
+nav a:hover,nav a.active{background:var(--surface2);color:var(--text)}
+nav a.active{border-left:3px solid var(--accent)}
+.nav-icon{font-size:1.1rem;width:20px;text-align:center}
+.sidebar-footer{margin-top:auto;padding:12px 20px;font-size:.75rem;color:var(--muted)}
+
+/* ── topbar ─────────────────────────────────────────── */
+#topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+#topbar h1{font-size:1.1rem;font-weight:600}
+#topbar .actions{display:flex;gap:8px;align-items:center}
+.badge{background:var(--accent);color:#fff;border-radius:99px;font-size:.7rem;padding:2px 7px;font-weight:600}
+
+/* ── content panels ─────────────────────────────────── */
+.panel{flex:1;overflow-y:auto;padding:24px;display:none}
+.panel.active{display:block}
+
+/* ── cards / grid ───────────────────────────────────── */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;text-align:center}
+.stat-card .num{font-size:2rem;font-weight:700;color:var(--accent)}
+.stat-card .lbl{font-size:.8rem;color:var(--muted);margin-top:4px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:14px}
+.card h3{font-size:.95rem;font-weight:600;margin-bottom:10px;color:var(--accent2)}
+
+/* ── buttons ─────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--rad-sm);border:none;cursor:pointer;font-size:.85rem;font-weight:500;transition:.15s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{filter:brightness(1.15)}
+.btn-sm{padding:5px 10px;font-size:.8rem}
+.btn-danger{background:var(--red);color:#fff;opacity:.8}.btn-danger:hover{opacity:1}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}.btn-ghost:hover{color:var(--text);border-color:var(--accent)}
+
+/* ── form elements ──────────────────────────────────── */
+input,select,textarea{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rad-sm);color:var(--text);padding:8px 12px;font-size:.9rem;width:100%;font-family:var(--font)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+textarea{resize:vertical;min-height:80px}
+.form-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.form-row>*{flex:1;min-width:140px}
+label{font-size:.8rem;color:var(--muted);display:block;margin-bottom:4px}
+.field{margin-bottom:12px}
+
+/* ── chat ────────────────────────────────────────────── */
+#chat-panel{display:none;flex-direction:column;padding:0}
+#chat-panel.active{display:flex}
+#chat-messages{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:14px}
+.msg{max-width:72%;border-radius:var(--radius);padding:12px 16px;line-height:1.6;font-size:.9rem}
+.msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.msg.assistant{align-self:flex-start;background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:4px;white-space:pre-wrap}
+#chat-input-row{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:10px;background:var(--surface)}
+#chat-input{flex:1;padding:10px 14px;font-size:.9rem}
+.typing{color:var(--muted);font-style:italic;font-size:.85rem;animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+
+/* ── task / app / event items ───────────────────────── */
+.item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:var(--rad-sm);background:var(--surface2);margin-bottom:6px;border:1px solid var(--border)}
+.item:hover{border-color:var(--accent)}
+.item .meta{flex:1;min-width:0}
+.item .title{font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .sub{font-size:.75rem;color:var(--muted);margin-top:2px}
+.chip{font-size:.7rem;padding:2px 8px;border-radius:99px;font-weight:600}
+.chip.career{background:#312e81;color:#a5b4fc}
+.chip.study{background:#134e4a;color:#6ee7b7}
+.chip.baby{background:#4a1942;color:#f0abfc}
+.chip.business{background:#451a03;color:#fdba74}
+.chip.home{background:#1c3a1c;color:#86efac}
+.chip.general{background:#1e293b;color:#94a3b8}
+.chip.high{background:#450a0a;color:#fca5a5}
+.chip.medium{background:#451a03;color:#fdba74}
+.chip.low{background:#14532d;color:#86efac}
+.chip.applied{background:#1e3a5f;color:#93c5fd}
+.chip.interview{background:#312e81;color:#a5b4fc}
+.chip.offer{background:#14532d;color:#86efac}
+.chip.rejected{background:#450a0a;color:#fca5a5}
+.chip.saved{background:#1e293b;color:#94a3b8}
+.chip.screening{background:#451a03;color:#fdba74}
+.chip.withdrawn{background:#1e293b;color:#94a3b8}
+
+/* ── workflows ───────────────────────────────────────── */
+.wf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.wf-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;cursor:pointer;transition:.2s}
+.wf-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.wf-card .wf-icon{font-size:2rem;margin-bottom:8px}
+.wf-card h3{font-size:1rem;margin-bottom:6px}
+.wf-card p{font-size:.82rem;color:var(--muted)}
+
+/* ── modal ───────────────────────────────────────────── */
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+#modal-overlay.open{display:flex}
+#modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px;width:min(500px,95vw);max-height:90vh;overflow-y:auto;position:relative}
+#modal h2{margin-bottom:18px;font-size:1.1rem}
+#modal .close-btn{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.3rem}
+
+/* ── result box ──────────────────────────────────────── */
+#result-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rad-sm);padding:16px;font-size:.88rem;white-space:pre-wrap;line-height:1.7;max-height:420px;overflow-y:auto;display:none;margin-top:14px}
+
+/* ── settings ────────────────────────────────────────── */
+.settings-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:16px}
+.settings-section h3{font-size:1rem;margin-bottom:16px;color:var(--accent2)}
+
+/* ── scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ── toast ───────────────────────────────────────────── */
+#toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rad-sm);padding:12px 18px;font-size:.88rem;box-shadow:var(--shadow);z-index:200;opacity:0;transform:translateY(8px);transition:.3s;pointer-events:none}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast.ok{border-color:var(--green);color:var(--green)}
+#toast.err{border-color:var(--red);color:var(--red)}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+  <div class="logo">🤖 <span>AI Personal Assistant</span></div>
+  <nav>
+    <a href="#" class="active" data-panel="dashboard">  <span class="nav-icon">🏠</span>Dashboard</a>
+    <a href="#" data-panel="chat">      <span class="nav-icon">💬</span>Chat</a>
+    <a href="#" data-panel="tasks">     <span class="nav-icon">✅</span>Tasks</a>
+    <a href="#" data-panel="events">    <span class="nav-icon">📅</span>Calendar</a>
+    <a href="#" data-panel="apps">      <span class="nav-icon">💼</span>Applications</a>
+    <a href="#" data-panel="meals">     <span class="nav-icon">🍼</span>Meals</a>
+    <a href="#" data-panel="workflows"> <span class="nav-icon">⚡</span>Workflows</a>
+    <a href="#" data-panel="memory">    <span class="nav-icon">🧠</span>Memory</a>
+    <a href="#" data-panel="settings">  <span class="nav-icon">⚙️</span>Settings</a>
+  </nav>
+  <div class="sidebar-footer">Personal Assistant v1.0</div>
+</aside>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- topbar -->
+  <div id="topbar">
+    <h1 id="panel-title">Dashboard</h1>
+    <div class="actions">
+      <span id="model-badge" class="badge">–</span>
+      <a href="/calendar.ics" class="btn btn-ghost btn-sm" title="Download .ics calendar">📅 Export Calendar</a>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="panel active" id="dashboard">
+    <div class="stat-grid" id="stat-grid">
+      <div class="stat-card"><div class="num" id="stat-tasks">–</div><div class="lbl">Open Tasks</div></div>
+      <div class="stat-card"><div class="num" id="stat-apps">–</div><div class="lbl">Active Apps</div></div>
+      <div class="stat-card"><div class="num" id="stat-events">–</div><div class="lbl">Today's Events</div></div>
+      <div class="stat-card"><div class="num" id="stat-followups">–</div><div class="lbl">Follow-ups Due</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex-wrap:wrap">
+      <div class="card"><h3>📅 Today's Events</h3><div id="dash-events"></div></div>
+      <div class="card"><h3>⚠️ Follow-up Due</h3><div id="dash-followups"></div></div>
+      <div class="card"><h3>🍼 Today's Meals</h3><div id="dash-meals"></div></div>
+    </div>
+  </div>
+
+  <!-- CHAT -->
+  <div class="panel" id="chat-panel">
+    <div id="chat-messages"></div>
+    <div id="chat-input-row">
+      <input id="chat-input" type="text" placeholder="Ask me anything… e.g. 'Plan my week' or 'Add a study task for tomorrow'" autocomplete="off">
+      <button class="btn btn-primary" onclick="sendChat()">Send ➤</button>
+      <button class="btn btn-ghost" onclick="clearChat()" title="Clear history">🗑</button>
+    </div>
+  </div>
+
+  <!-- TASKS -->
+  <div class="panel" id="tasks">
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <select id="task-status-filter" onchange="loadTasks()" style="width:120px">
+        <option value="open">Open</option><option value="done">Done</option><option value="all">All</option>
+      </select>
+      <select id="task-cat-filter" onchange="loadTasks()" style="width:140px">
+        <option value="">All categories</option>
+        <option>career</option><option>study</option><option>baby</option>
+        <option>business</option><option>home</option><option>general</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="openModal('add-task')">+ Add Task</button>
+    </div>
+    <div id="task-list"></div>
+  </div>
+
+  <!-- EVENTS -->
+  <div class="panel" id="events">
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <input type="date" id="event-from" onchange="loadEvents()" style="width:160px">
+      <input type="date" id="event-to"   onchange="loadEvents()" style="width:160px">
+      <button class="btn btn-primary btn-sm" onclick="openModal('add-event')">+ Add Event</button>
+      <a href="/calendar.ics" class="btn btn-ghost btn-sm">⬇ Export .ics</a>
+    </div>
+    <div id="event-list"></div>
+  </div>
+
+  <!-- APPLICATIONS -->
+  <div class="panel" id="apps">
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <select id="app-status-filter" onchange="loadApps()" style="width:160px">
+        <option value="">All statuses</option>
+        <option>saved</option><option>applied</option><option>screening</option>
+        <option>interview</option><option>offer</option><option>rejected</option><option>withdrawn</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="openModal('add-app')">+ Add Application</button>
+    </div>
+    <div id="app-list"></div>
+  </div>
+
+  <!-- MEALS -->
+  <div class="panel" id="meals">
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <input type="date" id="meal-day-filter" onchange="loadMeals()" style="width:170px">
+      <button class="btn btn-primary btn-sm" onclick="openModal('add-meal')">+ Add Meal</button>
+    </div>
+    <div id="meal-list"></div>
+  </div>
+
+  <!-- WORKFLOWS -->
+  <div class="panel" id="workflows">
+    <p style="color:var(--muted);margin-bottom:20px;font-size:.88rem">Pre-built multi-step AI workflows. Each runs tool-calling + LLM chains and saves results to your data.</p>
+    <div class="wf-grid" id="wf-grid"></div>
+    <div id="result-box"></div>
+  </div>
+
+  <!-- MEMORY -->
+  <div class="panel" id="memory">
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <input id="pref-key"   type="text" placeholder="Key (e.g. wake_time)" style="max-width:200px">
+      <input id="pref-value" type="text" placeholder="Value">
+      <button class="btn btn-primary btn-sm" onclick="savePref()">Save Preference</button>
+    </div>
+    <div class="card"><h3>🧠 Remembered Preferences</h3><div id="pref-list"></div></div>
+    <div style="margin-top:20px">
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <input id="note-search" type="text" placeholder="Search notes…">
+        <button class="btn btn-ghost btn-sm" onclick="searchNotes()">Search</button>
+      </div>
+      <div class="card"><h3>📝 Notes</h3><div id="notes-list"></div></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="panel" id="settings">
+    <div class="settings-section">
+      <h3>🔑 API Configuration</h3>
+      <div class="field">
+        <label>Provider</label>
+        <select id="set-provider" onchange="onProviderChange()">
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI (GPT)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input id="set-key" type="password" placeholder="Paste your API key here (never stored on any server)">
+      </div>
+      <div class="field">
+        <label>Model</label>
+        <div style="display:flex;gap:8px">
+          <select id="set-model" style="flex:1"></select>
+          <button class="btn btn-ghost btn-sm" onclick="fetchModels()">Refresh</button>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+    <div class="settings-section">
+      <h3>📅 Calendar Reminders</h3>
+      <p style="font-size:.88rem;color:var(--muted);margin-bottom:12px">Subscribe or import the .ics feed to get reminders in any calendar app:</p>
+      <code style="font-size:.82rem;color:var(--accent2)">/calendar.ics</code>
+      <ul style="font-size:.82rem;color:var(--muted);margin-top:10px;padding-left:18px;line-height:2">
+        <li><b>Google Calendar</b> → Other calendars → From URL → paste <code>http://localhost:8000/calendar.ics</code></li>
+        <li><b>Apple Calendar</b> → File → New Calendar Subscription</li>
+        <li><b>Outlook</b> → Add calendar → From Internet</li>
+      </ul>
+    </div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /app -->
+
+<!-- MODAL -->
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+<div id="modal">
+  <button class="close-btn" onclick="closeModal()">×</button>
+  <div id="modal-content"></div>
+</div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ── utils ────────────────────────────────────────────────────────
+const $  = id => document.getElementById(id);
+const API = path => fetch(path);
+
+function toast(msg, type="ok"){
+  const t=$("toast"); t.textContent=msg; t.className="show "+type;
+  setTimeout(()=>t.className="",2800);
+}
+
+async function api(path, opts={}){
+  try{
+    const r=await fetch(path, {headers:{"Content-Type":"application/json"}, ...opts});
+    const j=await r.json();
+    if(!r.ok) throw new Error(j.error||"Server error");
+    return j;
+  }catch(e){toast(e.message,"err"); throw e;}
+}
+
+function md(text){
+  // minimal markdown → html
+  return text
+    .replace(/\*\*(.+?)\*\*/g,"<b>$1</b>")
+    .replace(/\*(.+?)\*/g,"<i>$1</i>")
+    .replace(/`(.+?)`/g,"<code style='background:var(--surface2);padding:1px 5px;border-radius:4px'>$1</code>")
+    .replace(/\n/g,"<br>");
+}
+
+// ── nav ──────────────────────────────────────────────────────────
+const TITLES = {dashboard:"Dashboard",chat:"Chat here",tasks:"Tasks",
+  events:"Calendar",apps:"Applications",meals:"Baby Meals",
+  workflows:"AI Workflows",memory:"Memory & Notes",settings:"Settings"};
+
+document.querySelectorAll("nav a").forEach(a=>{
+  a.addEventListener("click",e=>{
+    e.preventDefault();
+    const p=a.dataset.panel;
+    document.querySelectorAll("nav a").forEach(x=>x.classList.remove("active"));
+    a.classList.add("active");
+    document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));
+    $(p).classList.add("active");
+    $("panel-title").textContent = TITLES[p]||p;
+    if(p==="dashboard") loadDashboard();
+    if(p==="tasks")     loadTasks();
+    if(p==="events")    loadEvents();
+    if(p==="apps")      loadApps();
+    if(p==="meals")     loadMeals();
+    if(p==="memory")    loadMemory();
+    if(p==="workflows") loadWorkflows();
+    if(p==="chat")      loadChatHistory();
+  });
+});
+
+// ── dashboard ────────────────────────────────────────────────────
+async function loadDashboard(){
+  const d = await api("/api/dashboard");
+  $("stat-tasks").textContent   = d.open_tasks;
+  $("stat-apps").textContent    = d.apps_active;
+  $("stat-events").textContent  = d.todays_events.length;
+  $("stat-followups").textContent = d.overdue_followups.length;
+  $("dash-events").innerHTML    = d.todays_events.length
+    ? d.todays_events.map(e=>`<div class="item"><div class="meta"><div class="title">${e.title}</div><div class="sub">${e.start}</div></div></div>`).join("")
+    : "<p style='color:var(--muted);font-size:.85rem'>No events today</p>";
+  $("dash-followups").innerHTML = d.overdue_followups.length
+    ? d.overdue_followups.map(a=>`<div class="item"><div class="meta"><div class="title">${a.company} – ${a.role}</div><div class="sub">Follow up by ${a.follow_up}</div></div></div>`).join("")
+    : "<p style='color:var(--muted);font-size:.85rem'>All clear ✓</p>";
+  $("dash-meals").innerHTML = d.todays_meals.length
+    ? d.todays_meals.map(m=>`<div style='margin-bottom:6px'><b style='text-transform:capitalize'>${m.meal}:</b> ${m.items}</div>`).join("")
+    : "<p style='color:var(--muted);font-size:.85rem'>No meals planned yet</p>";
+}
+
+// ── chat ─────────────────────────────────────────────────────────
+async function loadChatHistory(){
+  const msgs = await api("/api/chat/history");
+  const box  = $("chat-messages"); box.innerHTML="";
+  msgs.forEach(m=>addBubble(m.role, m.content));
+  box.scrollTop = box.scrollHeight;
+}
+
+function addBubble(role, text){
+  const box=$("chat-messages");
+  const d=document.createElement("div");
+  d.className="msg "+role;
+  d.innerHTML = role==="assistant" ? md(text) : text;
+  box.appendChild(d);
+  box.scrollTop=box.scrollHeight;
+  return d;
+}
+
+async function sendChat(){
+  const inp = $("chat-input"); const msg = inp.value.trim();
+  if(!msg) return; inp.value="";
+  addBubble("user", msg);
+  const typing = addBubble("assistant","<span class='typing'>thinking…</span>");
+  try{
+    const r = await api("/api/chat",{method:"POST",body:JSON.stringify({message:msg})});
+    typing.innerHTML = md(r.reply);
+  }catch(e){ typing.innerHTML = `<span style='color:var(--red)'>${e.message}</span>`;}
+}
+
+$("chat-input").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey) sendChat(); });
+
+async function clearChat(){
+  await api("/api/chat/clear",{method:"POST"});
+  $("chat-messages").innerHTML=""; toast("Chat cleared");
+}
+
+// ── tasks ────────────────────────────────────────────────────────
+async function loadTasks(){
+  const s = $("task-status-filter").value;
+  const c = $("task-cat-filter").value;
+  const url = `/api/tasks?status=${s}${c?"&category="+c:""}`;
+  const tasks = await api(url);
+  $("task-list").innerHTML = tasks.length
+    ? tasks.map(t=>`
+      <div class="item">
+        <span class="chip ${t.category}">${t.category}</span>
+        <span class="chip ${t.priority}">${t.priority}</span>
+        <div class="meta">
+          <div class="title">${t.title}</div>
+          <div class="sub">${t.due?"Due "+t.due:"No due date"}</div>
+        </div>
+        ${t.status==="open"?`<button class="btn btn-sm btn-ghost" onclick="doneTask(${t.id})" title="Mark done">✓</button>`:""}
+        <button class="btn btn-sm btn-danger" onclick="deleteTask(${t.id})">✕</button>
+      </div>`).join("")
+    : "<p style='color:var(--muted)'>No tasks found.</p>";
+}
+
+async function doneTask(id){
+  await api(`/api/tasks/${id}`,{method:"PATCH",body:JSON.stringify({status:"done"})});
+  toast("Task done! ✓"); loadTasks();
+}
+async function deleteTask(id){
+  if(!confirm("Delete this task?")) return;
+  await api(`/api/tasks/${id}`,{method:"DELETE"}); toast("Deleted"); loadTasks();
+}
+
+// ── events ────────────────────────────────────────────────────────
+async function loadEvents(){
+  const f = $("event-from").value; const t = $("event-to").value;
+  const url = "/api/events"+(f||t?"?from_date="+f+"&to_date="+t:"");
+  const evs = await api(url);
+  $("event-list").innerHTML = evs.length
+    ? evs.map(e=>`
+      <div class="item">
+        <span class="chip ${e.category}">${e.category}</span>
+        <div class="meta">
+          <div class="title">${e.title}</div>
+          <div class="sub">${e.start} → ${e.end||"–"}  |  ⏰${e.remind_minutes}min  |  🔁${e.repeat}</div>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id})">✕</button>
+      </div>`).join("")
+    : "<p style='color:var(--muted)'>No events found.</p>";
+}
+
+async function deleteEvent(id){
+  if(!confirm("Delete event?")) return;
+  await api(`/api/events/${id}`,{method:"DELETE"}); toast("Deleted"); loadEvents();
+}
+
+// ── applications ─────────────────────────────────────────────────
+async function loadApps(){
+  const s = $("app-status-filter").value;
+  const apps = await api("/api/applications"+(s?"?status="+s:""));
+  $("app-list").innerHTML = apps.length
+    ? apps.map(a=>`
+      <div class="item">
+        <div class="meta">
+          <div class="title">${a.company} — ${a.role}</div>
+          <div class="sub">${a.link?"🔗 "+a.link+" | ":""}Follow-up: ${a.follow_up||"–"} | Applied: ${a.applied_on||"–"}</div>
+        </div>
+        <span class="chip ${a.status}">${a.status}</span>
+        <select style="width:110px;padding:4px 6px;font-size:.78rem" onchange="updateAppStatus(${a.id},this.value)">
+          <option value="">Change…</option>
+          ${["saved","applied","screening","interview","offer","rejected","withdrawn"].map(s=>`<option value="${s}">${s}</option>`).join("")}
+        </select>
+        <button class="btn btn-sm btn-danger" onclick="deleteApp(${a.id})">✕</button>
+      </div>`).join("")
+    : "<p style='color:var(--muted)'>No applications yet.</p>";
+}
+
+async function updateAppStatus(id, status){
+  if(!status) return;
+  await api(`/api/applications/${id}`,{method:"PATCH",body:JSON.stringify({status})}); toast("Updated"); loadApps();
+}
+async function deleteApp(id){
+  if(!confirm("Delete application?")) return;
+  await api(`/api/applications/${id}`,{method:"DELETE"}); toast("Deleted"); loadApps();
+}
+
+// ── meals ─────────────────────────────────────────────────────────
+async function loadMeals(){
+  const d = $("meal-day-filter").value;
+  const meals = await api("/api/meals"+(d?"?day="+d:""));
+  $("meal-list").innerHTML = meals.length
+    ? meals.map(m=>`
+      <div class="item">
+        <div class="meta">
+          <div class="title"><b>${m.meal.charAt(0).toUpperCase()+m.meal.slice(1)}</b> — ${m.day}</div>
+          <div class="sub">${m.items}${m.notes?" | "+m.notes:""}</div>
+        </div>
+      </div>`).join("")
+    : "<p style='color:var(--muted)'>No meals planned.</p>";
+}
+
+// ── memory / prefs ────────────────────────────────────────────────
+async function loadMemory(){
+  const prefs = await api("/api/prefs");
+  $("pref-list").innerHTML = prefs.length
+    ? prefs.map(p=>`
+      <div class="item">
+        <div class="meta"><div class="title"><b>${p.key}</b>: ${p.value}</div></div>
+        <button class="btn btn-sm btn-danger" onclick="deletePref('${p.key}')">✕</button>
+      </div>`).join("")
+    : "<p style='color:var(--muted)'>No preferences saved yet.</p>";
+  searchNotes();
+}
+
+async function savePref(){
+  const k=$("pref-key").value.trim(), v=$("pref-value").value.trim();
+  if(!k||!v){toast("Key and value required","err");return;}
+  await api("/api/prefs",{method:"POST",body:JSON.stringify({key:k,value:v})});
+  toast("Saved ✓"); $("pref-key").value=""; $("pref-value").value=""; loadMemory();
+}
+async function deletePref(key){
+  await api(`/api/prefs/${key}`,{method:"DELETE"}); toast("Forgotten"); loadMemory();
+}
+async function searchNotes(){
+  const q = $("note-search")?.value||"";
+  const notes = await api("/api/notes?q="+encodeURIComponent(q));
+  $("notes-list").innerHTML = notes.length
+    ? notes.map(n=>`
+      <div style='margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)'>
+        <div style='font-size:.8rem;color:var(--accent2);margin-bottom:4px'>${n.topic} · ${n.created}</div>
+        <div style='font-size:.85rem;white-space:pre-wrap'>${n.content.slice(0,300)}${n.content.length>300?"…":""}</div>
+      </div>`).join("")
+    : "<p style='color:var(--muted)'>No notes found.</p>";
+}
+
+// ── workflows ─────────────────────────────────────────────────────
+async function loadWorkflows(){
+  const wfs = await api("/api/workflows");
+  $("wf-grid").innerHTML = wfs.map(w=>`
+    <div class="wf-card" onclick="runWorkflow('${w.id}', '${w.name}')">
+      <div class="wf-icon">${w.name.split(" ")[0]}</div>
+      <h3>${w.name.split(" ").slice(1).join(" ")}</h3>
+      <p>${w.description}</p>
+    </div>`).join("");
+}
+
+async function runWorkflow(id, name){
+  let body = {};
+  if(id==="business_notes"){
+    const disc = prompt("Paste or type the discussion notes from your sister call:");
+    if(!disc) return;
+    body = {discussion: disc};
+  }
+  const rb = $("result-box");
+  rb.style.display="block"; rb.textContent="⏳ Running workflow…";
+  try{
+    const r = await api(`/api/workflows/${id}`,{method:"POST",body:JSON.stringify(body)});
+    rb.innerHTML = md(r.result);
+    toast("Workflow complete ✓");
+  }catch(e){ rb.textContent="Error: "+e.message; }
+}
+
+// ── settings ──────────────────────────────────────────────────────
+async function loadSettings(){
+  const s = await api("/api/settings");
+  $("set-provider").value = s.provider||"anthropic";
+  $("set-model").innerHTML=`<option>${s.model||"–"}</option>`;
+  $("model-badge").textContent = (s.model||"–").split("-").slice(0,3).join("-");
+}
+
+async function fetchModels(){
+  const prov = $("set-provider").value;
+  const key  = $("set-key").value.trim() || "_current_";
+  const url  = `/api/models?provider=${prov}&api_key=${encodeURIComponent(key)}`;
+  const models = await api(url);
+  const sel = $("set-model");
+  sel.innerHTML = models.map(m=>`<option value="${m}">${m}</option>`).join("");
+}
+
+function onProviderChange(){ $("set-model").innerHTML="<option>– click Refresh –</option>"; }
+
+async function saveSettings(){
+  const key   = $("set-key").value.trim();
+  const model = $("set-model").value;
+  const prov  = $("set-provider").value;
+  if(!key){toast("Please enter an API key","err");return;}
+  await api("/api/settings",{method:"POST",body:JSON.stringify({provider:prov,api_key:key,model})});
+  toast("Settings saved ✓"); loadSettings();
+}
+
+// ── modal ─────────────────────────────────────────────────────────
+const MODAL_FORMS = {
+  "add-task": `
+    <h2>Add Task</h2>
+    <div class="field"><label>Title *</label><input id="m-title" type="text"></div>
+    <div class="form-row">
+      <div class="field"><label>Due</label><input id="m-due" type="datetime-local"></div>
+      <div class="field"><label>Priority</label><select id="m-prio"><option>medium</option><option>high</option><option>low</option></select></div>
+    </div>
+    <div class="field"><label>Category</label><select id="m-cat">
+      <option>general</option><option>career</option><option>study</option>
+      <option>baby</option><option>business</option><option>home</option></select></div>
+    <div class="field"><label>Notes</label><textarea id="m-notes"></textarea></div>
+    <button class="btn btn-primary" onclick="submitTask()">Add Task</button>`,
+  "add-event": `
+    <h2>Add Event</h2>
+    <div class="field"><label>Title *</label><input id="m-ev-title" type="text"></div>
+    <div class="form-row">
+      <div class="field"><label>Start *</label><input id="m-ev-start" type="datetime-local"></div>
+      <div class="field"><label>End</label><input id="m-ev-end" type="datetime-local"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Remind (min before)</label><input id="m-ev-remind" type="number" value="15" min="0"></div>
+      <div class="field"><label>Repeat</label><select id="m-ev-repeat">
+        <option>none</option><option>daily</option><option>weekly</option><option>monthly</option></select></div>
+    </div>
+    <div class="field"><label>Description</label><textarea id="m-ev-desc"></textarea></div>
+    <button class="btn btn-primary" onclick="submitEvent()">Add Event</button>`,
+  "add-app": `
+    <h2>Add Application</h2>
+    <div class="form-row">
+      <div class="field"><label>Company *</label><input id="m-app-co" type="text"></div>
+      <div class="field"><label>Role *</label><input id="m-app-role" type="text"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Status</label><select id="m-app-status">
+        <option>saved</option><option>applied</option><option>screening</option>
+        <option>interview</option><option>offer</option></select></div>
+      <div class="field"><label>Follow-up date</label><input id="m-app-fu" type="date"></div>
+    </div>
+    <div class="field"><label>Link</label><input id="m-app-link" type="url"></div>
+    <div class="field"><label>Notes</label><textarea id="m-app-notes"></textarea></div>
+    <button class="btn btn-primary" onclick="submitApp()">Add Application</button>`,
+  "add-meal": `
+    <h2>Add Meal</h2>
+    <div class="form-row">
+      <div class="field"><label>Day *</label><input id="m-meal-day" type="date"></div>
+      <div class="field"><label>Meal *</label><select id="m-meal-slot">
+        <option>breakfast</option><option>morning_snack</option><option>lunch</option>
+        <option>afternoon_snack</option><option>dinner</option></select></div>
+    </div>
+    <div class="field"><label>Items *</label><input id="m-meal-items" type="text" placeholder="e.g. Rice porridge, mashed banana"></div>
+    <div class="field"><label>Notes</label><input id="m-meal-notes" type="text"></div>
+    <button class="btn btn-primary" onclick="submitMeal()">Save Meal</button>`,
+};
+
+function openModal(form){
+  $("modal-content").innerHTML = MODAL_FORMS[form]||"";
+  $("modal-overlay").classList.add("open");
+}
+function closeModal(){ $("modal-overlay").classList.remove("open"); }
+
+async function submitTask(){
+  const t = $("m-title").value.trim();
+  if(!t){toast("Title required","err");return;}
+  await api("/api/tasks",{method:"POST",body:JSON.stringify({
+    title:t, due:$("m-due").value||null, priority:$("m-prio").value,
+    category:$("m-cat").value, notes:$("m-notes").value})});
+  closeModal(); toast("Task added ✓"); loadTasks();
+}
+
+async function submitEvent(){
+  const t=$("m-ev-title").value.trim(), s=$("m-ev-start").value;
+  if(!t||!s){toast("Title and start required","err");return;}
+  await api("/api/events",{method:"POST",body:JSON.stringify({
+    title:t, start:s, end:$("m-ev-end").value||null,
+    remind_minutes:parseInt($("m-ev-remind").value)||15,
+    repeat:$("m-ev-repeat").value, description:$("m-ev-desc").value})});
+  closeModal(); toast("Event added ✓"); loadEvents();
+}
+
+async function submitApp(){
+  const co=$("m-app-co").value.trim(), role=$("m-app-role").value.trim();
+  if(!co||!role){toast("Company and role required","err");return;}
+  await api("/api/applications",{method:"POST",body:JSON.stringify({
+    company:co, role, status:$("m-app-status").value,
+    follow_up:$("m-app-fu").value||null, link:$("m-app-link").value,
+    notes:$("m-app-notes").value})});
+  closeModal(); toast("Application added ✓"); loadApps();
+}
+
+async function submitMeal(){
+  const day=$("m-meal-day").value, items=$("m-meal-items").value.trim();
+  if(!day||!items){toast("Day and items required","err");return;}
+  await api("/api/meals",{method:"POST",body:JSON.stringify({
+    day, meal:$("m-meal-slot").value, items, notes:$("m-meal-notes").value})});
+  closeModal(); toast("Meal saved ✓"); loadMeals();
+}
+
+// ── boot ──────────────────────────────────────────────────────────
+loadDashboard();
+loadSettings();
+</script>
+</body>
+</html>
