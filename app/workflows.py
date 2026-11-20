@@ -26,15 +26,21 @@ def _prefs_text() -> str:
 
 def _extract_json(text: str) -> list | dict:
     """Pull the first JSON array or object out of an LLM response."""
-    s = text.find("[")
-    if s == -1:
-        s = text.find("{")
-    e = text.rfind("]")
-    if e == -1:
-        e = text.rfind("}")
-    if s == -1 or e == -1:
-        return []
-    return json.loads(text[s:e+1])
+    decoder = json.JSONDecoder()
+    starts = sorted(
+        pos for pos in (text.find("{"), text.find("[")) if pos != -1
+    )
+
+    for start in starts:
+        try:
+            value, _ = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            continue
+
+        if isinstance(value, (list, dict)):
+            return value
+
+    return []
 
 
 # ── 1. Daily Plan ─────────────────────────────────────────────────────────────
